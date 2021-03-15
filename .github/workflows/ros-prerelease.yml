@@ -1,0 +1,44 @@
+name: ROS prerelease test
+on: [push]
+env:
+  JOB_PATH : /tmp/devel_job
+
+jobs:
+  prerelease-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build : [kinetic_amd64, melodic_amd64]
+        include:
+          - build: kinetic_amd64
+            ROS_DISTRO_NAME : kinetic
+            OS_NAME : ubuntu
+            OS_CODE_NAME : xenial
+            ARCH : amd64
+            INDEX_URL : "https://raw.githubusercontent.com/ros-infrastructure/ros_buildfarm_config/production/index.yaml"
+          - build: melodic_amd64
+            ROS_DISTRO_NAME : melodic
+            OS_NAME : ubuntu
+            OS_CODE_NAME : bionic
+            ARCH : amd64
+            INDEX_URL : "https://raw.githubusercontent.com/ros-infrastructure/ros_buildfarm_config/production/index.yaml"
+    steps:
+      - name: Chcekout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+      - name: add .local/bin to PATH
+        run: echo "$HOME/.local/bin:/tmp/catkin/bin" >> $GITHUB_PATH
+      - name: install the latest released version of ros_buildfarm
+        run: pip install ros_buildfarm
+      - name: checkout catkin for catkin_test_results script
+        run: git clone https://github.com/ros/catkin /tmp/catkin
+      - name: use the code already checked out by Github Action
+        run: mkdir -p $JOB_PATH/ws/src; cp -R $GITHUB_WORKSPACE $JOB_PATH/ws/src/
+      - name: generate the script to run a pre-release job for that target and repo
+        run: generate_prerelease_script.py ${{matrix.INDEX_URL}} ${{matrix.ROS_DISTRO_NAME}} default ${{matrix.OS_NAME}} ${{matrix.OS_CODE_NAME}} ${{matrix.ARCH}}  --output-dir $JOB_PATH
+      - name: run the actual job which involves Docker
+        run: cd $JOB_PATH; sh ./prerelease.sh -y
+      - name: get summary of test results
+        run: catkin_test_results $JOB_PATH/ws/test_results --all
+
